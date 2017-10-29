@@ -1,0 +1,21 @@
+CC = g++
+
+all:	scrap
+
+scrap: main.o ui.o map.o being.o item.o game.o event.o rng.o
+	$(CC) -o $@ $^ -lncurses
+
+scrap.tar.gz: *.cpp *.h makefile.mingw makefile.linux readme.txt manual.txt
+	tar cfz scrap.tar.gz *.cpp *.h makefile.mingw makefile.linux readme.txt manual.txt
+
+clean:
+	rm -f scrap *.o
+
+main.o: main.cpp main.h game.h being.h map.h ui.h item.h event.h rng.h
+game.o:	game.cpp game.h being.h map.h ui.h item.h event.h rng.h data.h
+being.o:	being.cpp being.h map.h ui.h item.h event.h rng.h
+map.o:	map.cpp map.h being.h ui.h item.h rng.h
+ui.o:	ui.cpp ui.h game.h being.h map.h item.h event.h rng.h
+item.o:	item.cpp item.h
+event.o:	event.cpp event.h
+rng.o:	rng.cpp rng.h mt19937ar.h

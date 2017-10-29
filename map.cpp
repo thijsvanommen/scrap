@@ -1,52 +1,58 @@
 #include "map.h"
+#include "game.h"
+#include "being.h"
+#include "rng.h"
+#include "ui.h"
+extern Interface UI;
 
 Tile::Tile():
-type(TILE_UNDEFINED), seen(0), being(NULL) {}
+type(TILE_UNDEFINED), seen(0), being(-1) {}
 
 Tile::Tile(TileType newtype):
-type(newtype), seen(0), being(NULL) {}
+type(newtype), seen(0), being(-1) {}
 
 void Tile::getappearance(char & symbol, int & fore, int & back) {
+    symbol = terrainsymbol(terraintype());
 	back = COLOR_BLACK;
 	switch (type) {
 		case TILE_EXIT:
 			symbol = '>'; fore = COLOR_LWHITE; break;
 		case TILE_GRASS:
-			symbol = '.'; fore = COLOR_LGREEN; break;
+			fore = COLOR_LGREEN; break;
 		case TILE_TREE:
-			symbol = '*'; fore = COLOR_GREEN; break;
+			fore = COLOR_GREEN; break;
 		case TILE_DIRT:
-			symbol = '.'; fore = COLOR_YELLOW; break;
+			fore = COLOR_YELLOW; break;
 		case TILE_ROUGH:
-			symbol = '_'; fore = COLOR_RED; break;
+			fore = COLOR_RED; break;
 		case TILE_ROCK:
-			symbol = '^'; fore = COLOR_WHITE; break;
+			fore = COLOR_WHITE; break;
 		case TILE_ROAD:
-			symbol = '.'; fore = COLOR_RED; break;
+			fore = COLOR_RED; break;
 		case TILE_WALL:
-			symbol = '#'; fore = COLOR_CYAN; break;
+			fore = COLOR_CYAN; break;
 		case TILE_FLOOR:
-			symbol = '.'; fore = COLOR_CYAN; break;
+			fore = COLOR_CYAN; break;
 		case TILE_METALWALL:
-			symbol = '#'; fore = COLOR_LCYAN; break;
+			fore = COLOR_LCYAN; break;
 		case TILE_METALFLOOR:
-			symbol = '.'; fore = COLOR_LCYAN; break;
+			fore = COLOR_LCYAN; break;
 		case TILE_CAVEWALL:
-			symbol = '#'; fore = COLOR_MAGENTA; break;
+			fore = COLOR_MAGENTA; break;
 		case TILE_CAVEFLOOR:
-			symbol = '.'; fore = COLOR_MAGENTA; break;
+			fore = COLOR_MAGENTA; break;
 		case TILE_CHASM:
-			symbol = ' '; fore = COLOR_BLACK; break;
+			fore = COLOR_LBLACK; break;
 		case TILE_SHALLOW:
-			symbol = '~'; fore = COLOR_LBLUE; back = COLOR_BLUE; break;
+			fore = COLOR_LBLUE; back = COLOR_BLUE; break;
 		case TILE_DEEP:
-			symbol = '='; fore = COLOR_LBLUE; back = COLOR_BLUE; break;
+			fore = COLOR_LBLUE; back = COLOR_BLUE; break;
 		case TILE_DARK:
-			symbol = '.'; fore = COLOR_LBLACK; break;
+			fore = COLOR_LBLACK; break;
 		case TILE_RUIN:
-			symbol = '#'; fore = COLOR_WHITE; break;
+			fore = COLOR_WHITE; break;
 		case TILE_SUB:
-			symbol = '"'; fore = COLOR_LBLUE; back = COLOR_BLUE; break;
+			fore = COLOR_LBLUE; back = COLOR_BLUE; break;
 		default:
 			symbol = 'E'; fore = COLOR_LYELLOW; back = COLOR_RED; break;
 	}
@@ -92,6 +98,8 @@ char * Tile::getname() {
 			return "ruined wall";
 		case TILE_SUB:
 			return "underwater";
+        default:
+            return "buggy tile";
 	}
 }
 
@@ -135,8 +143,33 @@ TerrainType Tile::terraintype() {
 	return ret;
 }
 
+bool Tile::oftiletype(TileType t) {
+    return (type == t);
+}
+
 bool Tile::canpass(int flags) {
 	return (terraintype() & flags);
+}
+
+bool Tile::isseen() {
+    return (seen & TILEFLAG_SEEN);
+}
+
+bool Tile::isterraininlos() {
+    return (seen & TILEFLAG_INLOS);
+}
+
+// for support of cloaked beings
+bool Tile::isbeinginlos() {
+    return (seen & TILEFLAG_INLOS);
+}
+
+bool Tile::isvalid() {
+    return (seen & TILEFLAG_VALID);
+}
+
+Being * Tile::getbeing() {
+    return (being >= 0 && being < MAXNUMBEINGS ? &BEING[being] : NULL);
 }
 
 int getdefaultspeed(TerrainType terrain) {
@@ -198,6 +231,10 @@ bool Map::find(TileType t, int & x, int & y) {
 			return false;
 	} while (tile[x][y].type != t);
 	return true;
+}
+
+void Map::settile(int x, int y, TileType t) {
+    tile[x][y] = Tile(t);
 }
 
 void Map::background(TileType interior, TileType border) {
@@ -399,8 +436,8 @@ void Map::display(int x, int y) {
 			 fore = COLOR_WHITE;
 			 back = COLOR_BLACK;
 		}
-		else if (tile[x][y].being)
-			tile[x][y].being->getappearance(symbol, fore);
+		else if (tile[x][y].getbeing())
+			tile[x][y].getbeing()->getappearance(symbol, fore);
 	}
 	else {
 		fore = COLOR_WHITE;
@@ -429,9 +466,9 @@ Tile Map::gettile(int x, int y) {
 		return Tile(TILE_OFFSCREEN);
 }
 
-Tile * Map::gettileaddr(int x, int y) {
-	return &tile[x][y];
-}	
+void Map::setbeing(int x, int y, Being * newbeing) {
+        tile[x][y].being = (newbeing ? newbeing->getid() : -1);
+}
 
 // visit all squares with a clear line of sight from the center of the
 // viewer's square at least once (possibly twice for orthogonals and
@@ -463,15 +500,15 @@ void Map::visitoctant(int centerx, int centery, int radius, int terrain,
 				visitor visit, int dx, int dy, int orientation) {
 	int x, y, u, v, vmax;
 	int i;
-	IntervalQueue * q = new IntervalQueue(radius); // could do with 1/2 size
+	IntervalQueue q(radius); // could do with 1/2 size
 	Interval cur, tmp;
 	bool addtmp;
 
-	q->push(Interval(0, 1, 255, 256)); // 0 and 1-epsilon
+	q.push(Interval(0, 1, 255, 256)); // 0 and 1-epsilon
 
-	for (u = 1; u <= radius && q->getlength() > 0; u++) {
-		for (i = q->getlength(); i > 0; i--) {
-			cur = q->pop();
+	for (u = 1; u <= radius && q.getlength() > 0; u++) {
+		for (i = q.getlength(); i > 0; i--) {
+			cur = q.pop();
 			v = (int)((cur.p1-cur.q1)*(2*u-1)/(2*cur.q1))+u-1;
 			vmax = (int)((cur.p2*(2*u+1)+cur.q2)/(2*cur.q2));
 			x = centerx + dx*u - orientation*dy*v;
@@ -499,7 +536,7 @@ void Map::visitoctant(int centerx, int centery, int radius, int terrain,
 						tmp.p2 = 2*v-1;
 						tmp.q2 = 2*u+1;
 						// known to be < cur.{p/q}2
-						q->push(tmp);
+						q.push(tmp);
 						addtmp = false;
 					}
 				}
@@ -509,12 +546,10 @@ void Map::visitoctant(int centerx, int centery, int radius, int terrain,
 			if (addtmp) {
 				tmp.p2 = cur.p2;
 				tmp.q2 = cur.q2;
-				q->push(tmp);
+				q.push(tmp);
 			}
 		} // for i
 	} // for u
-
-	delete q;
 }
 
 // checks for two given points if a line of sight exists from one to the
@@ -581,8 +616,7 @@ bool Map::checkLOS(int centerx, int centery, int radius, int terrain,
 		}
 	}
 	
-	int x, y, u, v, vmax;
-	int i;
+	int x, y, u, v;
 	bool seenspace, seenblock;
 	
 	for (u = 1; u <= maxd - 1; u++) {
@@ -632,12 +666,43 @@ void Map::hide(int x, int y) {
 	display(x, y);
 }
 
+void Map::revealterrain(int x, int y) {
+    tile[x][y].seen |= TILEFLAG_SEEN;
+    display(x, y);
+}
+
 void Map::setvalid(int x, int y) {
 	tile[x][y].seen |= TILEFLAG_VALID;
 }
 
 void Map::resetvalid(int x, int y) {
 	tile[x][y].seen &= ~TILEFLAG_VALID;
+}
+
+void Map::save(std::ostream & out) {
+    int x, y;
+
+    for (x = 0; x < MAPHEIGHT; x++) {
+        for (y = 0; y < MAPWIDTH; y++) {
+            out << tile[x][y].type << ' '
+                << std::hex << (int)tile[x][y].seen << std::dec << ' '
+                << tile[x][y].being << '\n';
+        }
+    }
+}
+
+void Map::load(std::istream & in) {
+    int x, y, t, seen;
+
+    for (x = 0; x < MAPHEIGHT; x++) {
+        for (y = 0; y < MAPWIDTH; y++) {
+            in >> t
+               >> std::hex >> seen >> std::dec
+               >> tile[x][y].being;
+            tile[x][y].type = (TileType)t;
+            tile[x][y].seen = seen;
+        }
+    }
 }
 
 int dist(int x1, int y1, int x2, int y2) {
@@ -649,4 +714,33 @@ int dist(int x1, int y1, int x2, int y2) {
 		return dx;
 	else
 		return dy;
+}
+
+char terrainsymbol(TerrainType terrain) {
+    switch (terrain) {
+    case TERRAIN_FLOOR:
+        return '.';
+    case TERRAIN_TUNNEL:
+        return ':';
+    case TERRAIN_CHASM:
+        return '_';
+    case TERRAIN_WALL:
+        return '#';
+    case TERRAIN_DARK:
+        return '?';
+    case TERRAIN_SHALLOW:
+        return '-';
+    case TERRAIN_DEEP:
+        return '=';
+    case TERRAIN_ROUGH:
+        return '!';
+    case TERRAIN_SUB:
+        return '~';
+    case TERRAIN_METAL:
+        return '0';
+    case TERRAIN_HIGH:
+        return '*';
+    default:
+        return 'E';
+    }
 }

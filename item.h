@@ -3,6 +3,9 @@
 
 const int PROPNUM = 4;
 
+#include <string>
+#include <fstream>
+
 enum ItemType {
 	ITEM_VOID, ITEM_POWER, ITEM_WEAPON, ITEM_PROPULSION, ITEM_SENSOR,
 	ITEM_ARMOR, ITEM_MISC
@@ -13,17 +16,20 @@ public:
 	Item();
 
 	ItemType gettype();
-	char * getname();
+	const char * getname();
 	bool isoperational();
 	bool isactive();
 	bool receivedamage(int damage);
+
+    void save(std::ostream & out);
+    void load(std::istream & in);
 
 	ItemType type;
 	bool active;
 	int energyuse;
 	int status;
 	int prop[PROPNUM];
-	char * name;
+	std::string name;
 };
 
 // subclasses serve mostly to make being definitions look cleaner

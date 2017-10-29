@@ -1,11 +1,16 @@
 #include "being.h"
+#include "game.h"
+#include "event.h"
+#include "rng.h"
+
+extern Interface UI;
 
 Being::Being():
-type(BEING_VOID), isplayer(false), repairing(-1), mobile(true) {}
+type(BEING_VOID), isplayer(false), repairing(-1), mobile(true), id(0) {}
 
-Being::Being(BeingType newtype):
-type(newtype), isplayer(false), repairing(-1), thinksplayeristhere(false),
-timesincelasthit(99) {
+Being::Being(BeingType newtype, int newid):
+type(newtype), isplayer(false), repairing(-1), id(newid),
+thinksplayeristhere(false), timesincelasthit(99) {
 	mobile = true;
 	switch(newtype) {
 		case BEING_BUGGY: // 0
@@ -66,7 +71,7 @@ timesincelasthit(99) {
 			eq[2] = Weapon("flamethrower", 30, DAMAGE_ARMOR, 3, TW_NORMAL & ~TW_WATER);
 			eq[3] = Propulsion("cybernetic leg", 3, TP_LAND);
 			eq[4] = Propulsion("jetpack", 15, TP_AIR, 8);
-			eq[5] = Sensor("x-ray visor", 3, TS_XRAY);
+			eq[5] = Sensor("X-ray visor", 3, TS_XRAY);
 			eq[6] = Armor("cybernetic armor", 16, DAMAGE_NORMAL);
 			break;
 		case BEING_JUGGERNAUT: // 8
@@ -191,6 +196,12 @@ timesincelasthit(99) {
 			eq[6] = Armor("advanced techno-armor", 30, DAMAGE_POWER | DAMAGE_WEAPON | DAMAGE_PROPULSION | DAMAGE_SENSOR | DAMAGE_ARMOR);
 			eq[7] = Armor("invulnerability sphere", 999, 0, 30);
 			break;
+    case BEING_VOID:
+    case BEING_WRECK:
+    case BEING_PLAYER:
+        habitat = 0;
+        eq[0] = Power("buggy being power", 0);
+        break;
 	}
 }
 
@@ -204,19 +215,22 @@ void Being::createpc() {
 	eq[3] = Sensor("short-range sensor", 3, TS_NORMAL);
 	//eq[3] = Sensor("sightseer", 16, 0xffff);
 	eq[4] = Armor("iron plating", 10, 0);
+    eq[5] = Item();
+    eq[6] = Item();
+    eq[7] = Item();
 }
 
-void Being::place(Map * newmap, int newx, int newy, int slot) {
+void Being::place(Map * newmap, int newx, int newy) {
 	map = newmap;
 	xpos = newx;
 	ypos = newy;
-	map->gettileaddr(xpos, ypos)->being = this;
-	QUEUE->push(Event(1, EVENT_ACTION, slot));
-	QUEUE->push(Event(0, EVENT_ENERGY, slot));
-	QUEUE->push(Event(0, EVENT_SELFENERGY, slot));
+	map->setbeing(xpos, ypos, this);
+	QUEUE->push(Event(1, EVENT_ACTION, getid()));
+	QUEUE->push(Event(0, EVENT_ENERGY, getid()));
+	QUEUE->push(Event(0, EVENT_SELFENERGY, getid()));
 }
 
-bool Being::placerandom(Map * newmap, int slot) {
+bool Being::placerandom(Map * newmap) {
 	int newx, newy;
 	int tries = 0;
 	bool ok = false;
@@ -225,13 +239,13 @@ bool Being::placerandom(Map * newmap, int slot) {
 		newx = rng(MAPHEIGHT);
 		newy = rng(MAPWIDTH);
 		tries++;
-		if (newmap->gettile(newx, newy).being == NULL
+		if (newmap->gettile(newx, newy).getbeing() == NULL
 						&& newmap->gettile(newx, newy).terraintype() & habitat)
 			ok = true;
 	} while (!ok && tries < 1000);
 	
 	if (ok)
-		place(newmap, newx, newy, slot);
+		place(newmap, newx, newy);
 
 	return ok;
 }
@@ -255,7 +269,7 @@ void Being::getappearance(char & symbol, int & fore) {
 		case BEING_AMBUSHER:
 			symbol = 'x'; fore = COLOR_LMAGENTA; break;
 		case BEING_SECURITY:
-			symbol = '!'; fore = COLOR_LRED; break;
+			symbol = 's'; fore = COLOR_LYELLOW; break;
 		case BEING_CYBORG:
 			symbol = 'b'; fore = COLOR_LCYAN; break;
 		case BEING_JUGGERNAUT:
@@ -263,13 +277,13 @@ void Being::getappearance(char & symbol, int & fore) {
 		case BEING_ARMADILLO:
 			symbol = 'a'; fore = COLOR_YELLOW; break;
 		case BEING_PLANT:
-			symbol = '&'; fore = COLOR_LBLUE; break;
+			symbol = 'p'; fore = COLOR_LBLUE; break;
 		case BEING_AMPHIBIAN:
 			symbol = 'F'; fore = COLOR_LGREEN; break;
 		case BEING_DESTROYER:
 			symbol = 's'; fore = COLOR_LYELLOW; break;
 		case BEING_MINE:
-			symbol = '*'; fore = COLOR_LWHITE; break;
+			symbol = 'm'; fore = COLOR_LWHITE; break;
 		case BEING_BATTLESHIP:
 			symbol = 'S'; fore = COLOR_LYELLOW; break;
 		case BEING_GEOLOGIST:
@@ -341,7 +355,14 @@ char * Being::getname() {
 			return "steel elemental";
 		case BEING_MECHALICH:
 			return "mechalich";
+    case BEING_VOID:
+        break;
 	}
+    return "buggy being";
+}
+
+int Being::getid() {
+    return id;
 }
 
 int Being::act() {
@@ -350,7 +371,6 @@ int Being::act() {
 	
 	if (isplayer) {
 		move(DISPLAYTOP + xpos, DISPLAYLEFT + ypos);
-		refresh();
 		c = UI.getcommand();
 	}
 	else {
@@ -392,25 +412,52 @@ int Being::act() {
 			time = use(6); break;
 		case COMMAND_8:
 			time = use(7); break;
+    case COMMAND_DETAILS:
+        UI.detailspage(*this);
+        GAME.normaldisplay();
+        time = 0;
+        break;
+    case COMMAND_REORDER:
+        time = reorderitems(); break;
 		case COMMAND_SWITCH:
-			onoff(); break;
+			time = onoff(); break;
 		case COMMAND_DOWN:
-			if (map->gettile(xpos, ypos).type == TILE_EXIT) {
-				type = BEING_PLAYERDESCENDED;
-				time = 1;
+			if (map->gettile(xpos, ypos).oftiletype(TILE_EXIT)) {
+				GAME.state = GAMESTATE_NEXTLEVEL;
+				time = 0;
 			}
 			else
 				UI.msg("You need to find the exit first!");
 			break;
 		case COMMAND_HELP:
 			UI.displayhelp(); map->displayall(); break;
+    case COMMAND_SAVE:
+        if (UI.confirm("Save this game and quit? (y/n)")) {
+            if (GAME.savegame())
+                GAME.state = GAMESTATE_QUIT;
+            else
+                UI.msg("An error occured while trying to write the savefile!");
+            time = 0;
+        }
+        break;
+    case COMMAND_LOAD:
+        if (UI.confirm("Restore previous game? (y/n)")) {
+            if (!GAME.loadgame())
+                UI.msg("An error occured while trying to read the savefile!");
+            time = 0;
+        }
+        break;
 		case COMMAND_QUIT:
-			if (UI.confirm("Are you sure you want to quit? (y/n)")) {
-				time = 1; type = BEING_WRECK;
-			}
+			if (UI.confirm(
+                "Are you sure you want to quit this game without saving? (y/n)"
+                ))
+                GAME.state = GAMESTATE_QUIT;
+            time = 0;
 			break;
 		case COMMAND_MISS:
 			time = 120; break;
+    default:
+        break;
 	}
 
 	if (!isplayer && time == 0)
@@ -426,11 +473,11 @@ int Being::go(int dx, int dy, bool forreal) {
 	int destx = xpos + dx;
 	int desty = ypos + dy;
 
-	if (map->gettile(destx, desty).being) {
+	if (map->gettile(destx, desty).getbeing()) {
 		if (isplayer) {
-			if (map->gettile(destx, desty).being->type == BEING_WRECK)
-				return salvage(map->gettile(destx, desty).being);
-			if (map->gettile(destx, desty).seen & TILEFLAG_INLOS)
+			if (map->gettile(destx, desty).getbeing()->type == BEING_WRECK)
+				return salvage(map->gettile(destx, desty).getbeing());
+			if (map->gettile(destx, desty).isbeinginlos())
 				UI.msg("Bumping into them won't get the job done, you know.");
 			else
 				UI.msg("There seems to be something there already!");
@@ -455,8 +502,7 @@ int Being::go(int dx, int dy, bool forreal) {
 	if (speed < 0) {
 		if (isplayer) {
 			if (destterrain != TERRAIN_OFFSCREEN) {
-				map->gettileaddr(destx, desty)->seen |= TILEFLAG_SEEN;
-				map->display(destx, desty);
+                map->revealterrain(destx, desty);
 UI.msg("You can't go there using your current propulsion system.");
 			}
 			else
@@ -466,11 +512,11 @@ UI.msg("You can't go there using your current propulsion system.");
 	}
 
 	if (forreal) {
-		map->gettileaddr(xpos, ypos)->being = NULL;
+		map->setbeing(xpos, ypos, NULL);
 		willmove();
 		xpos += dx;
 		ypos += dy;
-		map->gettileaddr(destx, desty)->being = this;
+		map->setbeing(destx, desty, this);
 		hasmoved();
 
 		if (item >= 0)
@@ -488,7 +534,7 @@ int Being::salvage(Being * wreck) {
 	
 	wreck->displaystatus();
 	slot1 = UI.selectitem
-			("Which system do you want to salvage from the wreck?");
+			("Which system do you want to salvage from the wreck?", *wreck);
 	if (slot1 == -1 || wreck->eq[slot1].gettype() == ITEM_VOID) {
 		displaystatus();
 		UI.msg("Action cancelled.");
@@ -500,7 +546,7 @@ int Being::salvage(Being * wreck) {
 	strcat(msgbuf, " in which slot?");
 	displaystatus();
 	do {
-		slot2 = UI.selectitem(msgbuf);
+		slot2 = UI.selectitem(msgbuf, *this);
 		if (slot2 == -1) {
 			UI.msg("Action cancelled.");
 			return 0;
@@ -531,7 +577,7 @@ int Being::attack(int slotno) {
 	bool fire;
 	
 	if (isplayer) {
-		UI.msg("Select target (x to cancel)"); // FIXME if redefinable keys
+		UI.msg("Use +/- to cycle through targets; x to cancel; any other key to fire"); // FIXME if redefinable keys
 		map->visitLOS(xpos, ypos, eq[slotno].prop[WEAPON_RANGE],
 						eq[slotno].prop[WEAPON_TERRAIN], &Map::setvalid);
 		fire = target(x, y, true);
@@ -542,7 +588,7 @@ int Being::attack(int slotno) {
 			return 0;
 		}
 
-		attackee = map->gettile(x, y).being;
+		attackee = map->gettile(x, y).getbeing();
 		if (attackee == this) {
 			UI.msg("Your safety protocols prevent you from shooting yourself.");
 			return 0;
@@ -556,8 +602,12 @@ int Being::attack(int slotno) {
 			UI.msg("You don't hit anything.");
 	}
 	else {
+		// animation
+		// UI.display(DISPLAYTOP + x, DISPLAYLEFT + y, '*', COLOR_LYELLOW);
 		attackee->takehit(eq[slotno].prop[WEAPON_POWER],
 						eq[slotno].prop[WEAPON_DAMAGETYPE], this);
+		// napms(300);
+		// map->display(x, y);
 	}
 
 	damagebyuse(slotno);
@@ -574,8 +624,7 @@ bool Being::takehit(int power, int damagetype, Being * attacker) {
 	char msgbuf[128];
 
 	if (isplayer) {
-		if (!(map->gettile(attacker->xpos, attacker->ypos).seen
-								& TILEFLAG_INLOS))
+		if (!map->gettile(attacker->xpos, attacker->ypos).isbeinginlos())
 			showattacker = true;
 	}
 	else {
@@ -694,7 +743,7 @@ bool Being::takehit(int power, int damagetype, Being * attacker) {
 }
 
 int Being::energycycle() {
-	int max = 0, num = 0, slotno;
+	int max = 0, num = 0;
 
 	for (int i = 0; i < EQSIZE; i++)
 		if (eq[i].gettype() == ITEM_POWER && eq[i].isactive()) {
@@ -729,7 +778,7 @@ bool Being::checkrepairing() {
 	int num = 0;
 
 	if (isplayer && repairing >= 0 && eq[repairing].gettype() != ITEM_VOID
-					&& eq[repairing].status < 100)
+                 && eq[repairing].status < 100)
 		return true;
 	
 	for (int i = 0; i < EQSIZE; i++)
@@ -749,7 +798,7 @@ bool Being::checkrepairing() {
 void Being::selectrepairing(bool autoselect) {
 	if (isplayer && !autoselect) {
 		bool done = true;
-		Command c;
+        int newrepairing;
 		
 		for (int i = 0; i < EQSIZE; i++)
 			if (eq[i].gettype() != ITEM_VOID && eq[i].status < 100)
@@ -758,20 +807,28 @@ void Being::selectrepairing(bool autoselect) {
 			UI.msg("All systems are in perfect condition.");
 		else {
 			while (!done) {
-				do {
-					repairing = UI.selectitem
-									("Which system should be repaired next?");
-				} while (repairing < 0);
-				if (eq[repairing].gettype() != ITEM_VOID
-								&& eq[repairing].status < 100)
+                newrepairing = UI.selectitem
+                    ("Which system should be repaired next?", *this);
+				if (newrepairing < 0) {
+                    if (repairing < 0
+                        || eq[repairing].gettype() == ITEM_VOID
+                        || eq[repairing].status == 100)
+                        selectrepairing(true);
+                    // else keep repairing unchanged
+                    done = true;
+                }
+                else if (eq[newrepairing].gettype() != ITEM_VOID
+                         && eq[newrepairing].status < 100) {
+                    repairing = newrepairing;
 					done = true;
+                }
 			}
 		}
 	}
 	else {
 		int j = 100;
 		for (int i = 0; i < EQSIZE; i++)
-			if (eq[i].status < j) {
+			if (eq[i].gettype() != ITEM_VOID && eq[i].status < j) {
 				j = eq[i].status;
 				repairing = i;
 			}
@@ -847,14 +904,47 @@ void Being::damagebyuse(int slotno) {
 		hasmoved();
 }
 
-void Being::onoff() {
+int Being::reorderitems() {
+	int slot1, slot2;
+	Item tmp;
+	char msgbuf[128];
+	
+	slot1 = UI.selectitem
+			("Which system do you want move to another position?", *this);
+	if (slot1 == -1 || eq[slot1].gettype() == ITEM_VOID) {
+		UI.msg("Action cancelled.");
+		return 0;
+	}
+	tmp = eq[slot1];
+	strcpy(msgbuf, "Move ");
+	strcat(msgbuf, tmp.getname());
+	strcat(msgbuf, " to which slot?");
+	slot2 = UI.selectitem(msgbuf, *this);
+	if (slot2 == -1 || slot2 == slot1) {
+		UI.msg("Action cancelled.");
+		return 0;
+	}
+	eq[slot1] = eq[slot2];
+	eq[slot2] = tmp;
+	displayitemslot(slot1);
+    displayitemslot(slot2);
+    if (repairing == slot1)
+        repairing = slot2;
+    else if (repairing == slot2)
+        repairing = slot1;
+	
+    return 0;
+}
+
+int Being::onoff() {
 	int item;
 	
 	if (isplayer) {
-		item = UI.selectitem("Which item do you want to switch on or off?");
+		item = UI.selectitem("Which item do you want to switch on or off?",
+                             *this);
 		if (item == -1) {
 			UI.msg("Action cancelled.");
-			return;
+			return 0;
 		}
 		if (eq[item].gettype() == ITEM_SENSOR)
 			willmove();
@@ -872,6 +962,8 @@ void Being::onoff() {
 		if (eq[item].gettype() == ITEM_SENSOR)
 			hasmoved();
 	}
+
+    return 0;
 }
 
 int Being::use(int slotno) {
@@ -880,8 +972,10 @@ int Being::use(int slotno) {
 	
 	switch (eq[slotno].gettype()) {
 		case ITEM_POWER:
-			if (!eq[slotno].isactive())
+			if (!eq[slotno].isoperational())
 				UI.msg("Warning: this power core can currently only repair itself.");
+			else if (!eq[slotno].isactive())
+				UI.msg("Warning: this power core will only repair itself while it is switched off.");
 			selectrepairing(false); // FIXME: should be option
 			break;
 		case ITEM_WEAPON:
@@ -904,6 +998,12 @@ int Being::use(int slotno) {
 			if (isplayer)
 				UI.msg("Your armor functions constantly while it is active.");
 			break;
+    case ITEM_VOID:
+        // ignore keys corresponding to nonexisting items
+        break;
+    default:
+        UI.msg("Use of that item is not implemented yet!");
+        break;
 	}
 	
 	return time;
@@ -915,24 +1015,36 @@ bool Being::target(int & x, int & y, bool mustbevalid) {
 	bool done = false;
 	bool confirm;
 	
-	if (BEING[prevtarget].type != BEING_VOID
-					&& map->gettile(BEING[prevtarget].xpos,
-					BEING[prevtarget].ypos).seen
-					& TILEFLAG_INLOS) {
+	if (prevtarget != 0
+        && BEING[prevtarget].type != BEING_VOID
+        && map->gettile(BEING[prevtarget].xpos,
+                        BEING[prevtarget].ypos).isbeinginlos()) {
 		x = BEING[prevtarget].xpos;
 		y = BEING[prevtarget].ypos;
-		UI.clearstatus();
-		map->gettile(x, y).being->displaystatus();
+		if (mustbevalid && !map->gettile(x, y).isvalid()) {
+            move(0, 0);
+            clrtoeol();
+            move(0, 0);
+			addstr("Invalid target.");
+        }
+		map->gettile(x, y).getbeing()->displaystatus();
 	}
-	else {
+	else if (mustbevalid) {
+        // auto-select a target
+        cycletarget(x, y, 1, mustbevalid);
+        // only select player if nothing else around
+        if (prevtarget == 0)
+            cycletarget(x, y, 1, mustbevalid);
+        map->gettile(x, y).getbeing()->displaystatus();
+    }
+    else {
 		prevtarget = 0;
 		x = xpos;
 		y = ypos;
 	}
 
-	while (!done) {
+	while (true) {
 		move(DISPLAYTOP + x, DISPLAYLEFT + y);
-		refresh();
 		c = UI.getcommand();
 		switch (c) {
 			case COMMAND_NORTH:
@@ -951,32 +1063,38 @@ bool Being::target(int & x, int & y, bool mustbevalid) {
 				y--; break;
 			case COMMAND_NW:
 				x--; y--; break;
+        case COMMAND_DETAILS:
+            if (map->gettile(x, y).isbeinginlos()
+                    && map->gettile(x, y).getbeing()) {
+                UI.detailspage(*map->gettile(x, y).getbeing());
+                GAME.normaldisplay();
+            }
+            break;
 			case COMMAND_CANCEL:
 				done = true; confirm = false; break;
 			case COMMAND_NEXT:
-				do {
-					prevtarget = (prevtarget + 1) % MAXNUMBEINGS;
-					if (BEING[prevtarget].type == BEING_VOID)
-						continue;
-					x = BEING[prevtarget].xpos;
-					y = BEING[prevtarget].ypos;
-				}
-				while (!(map->gettile(x, y).seen & TILEFLAG_INLOS
-								&& (!mustbevalid
-								|| map->gettile(x, y).seen & TILEFLAG_VALID)));
+                cycletarget(x, y, 1, mustbevalid);
 				break;
+        case COMMAND_PREV:
+            cycletarget(x, y, -1, mustbevalid);
+            break;
 			default:
-				if (!mustbevalid || map->gettile(x, y).seen & TILEFLAG_VALID) {
+				if (!mustbevalid || map->gettile(x, y).isvalid()) {
 					done = true; confirm = true; break;
-				}
+                }
 		}
+
+        if (done)
+            break;
+
 		if (x < 0) x = 0;
 		if (y < 0) y = 0;
 		if (x >= DISPLAYHEIGHT) x = DISPLAYHEIGHT - 1;
 		if (y >= DISPLAYWIDTH) y = DISPLAYWIDTH - 1;
 	
-		if (map->gettile(x, y).being
-						&& map->gettile(x, y).seen & TILEFLAG_INLOS)
+		if (map->gettile(x, y).getbeing()
+                && map->gettile(x, y).isbeinginlos()
+                && (!mustbevalid || map->gettile(x, y).isvalid()))
 			for (i = 0; i < MAXNUMBEINGS; i++)
 				if (BEING[i].xpos == x && BEING[i].ypos == y) {
 					prevtarget = i;
@@ -988,31 +1106,48 @@ bool Being::target(int & x, int & y, bool mustbevalid) {
 		move(0, 0);
 		clrtoeol();
 		move(0, 0);
-		if (mustbevalid && !(map->gettile(x, y).seen & TILEFLAG_VALID))
+		if (mustbevalid && !map->gettile(x, y).isvalid()) {
 			addstr("Invalid target.");
-		else if (!(map->gettile(x, y).seen & TILEFLAG_SEEN))
+			if ((map->gettile(x, y).isbeinginlos())
+							&& map->gettile(x, y).getbeing())
+				map->gettile(x, y).getbeing()->displaystatus();
+        }
+		else if (!map->gettile(x, y).isseen())
 			addstr("You haven't seen this location yet.");
 		else {
-			if (map->gettile(x, y).seen & TILEFLAG_INLOS)
+			if (map->gettile(x, y).isterraininlos())
 				addstr("You see: ");
 			else
 				addstr("You remember: ");
 			addstr(map->gettile(x, y).getname());
-			if ((map->gettile(x, y).seen & TILEFLAG_INLOS)
-							&& map->gettile(x, y).being) {
+			if (map->gettile(x, y).isbeinginlos()
+							&& map->gettile(x, y).getbeing()) {
 				addstr(", ");
-				addstr(map->gettile(x, y).being->getname());
-				map->gettile(x, y).being->displaystatus();
+				addstr(map->gettile(x, y).getbeing()->getname());
+				map->gettile(x, y).getbeing()->displaystatus();
 			}
 		}
 	}
 	
-	UI.clearstatus();
 	displaystatus();
 	move(0, 0);
 	clrtoeol();
 	
 	return confirm;
+}
+
+void Being::cycletarget(int & x, int & y, int dir, bool mustbevalid) {
+    if (dir < 0)
+        dir += MAXNUMBEINGS;
+
+    do {
+        prevtarget = (prevtarget + dir) % MAXNUMBEINGS;
+        x = BEING[prevtarget].xpos;
+        y = BEING[prevtarget].ypos;
+    } while (!(BEING[prevtarget].type != BEING_VOID
+               && map->gettile(x, y).isbeinginlos()
+               && (!mustbevalid
+                   || map->gettile(x, y).isvalid())));
 }
 
 // Design goal for AI: don't try to find the best possible move, but behave
@@ -1170,7 +1305,7 @@ Command Being::AI() {
 				if (BEING->xpos != guessx || BEING->ypos != guessy) {
 					c = COMMAND_MISS;
 					thinksplayeristhere = false;
-					if (map->gettile(guessx, guessy).seen & TILEFLAG_INLOS) {
+					if (map->gettile(guessx, guessy).isterraininlos()) {
 						char msgbuf[128];
 						strcpy(msgbuf, "The ");
 						strcat(msgbuf, getname());
@@ -1239,31 +1374,26 @@ void Being::willmove() {
 	if (isplayer)
 		visitLOSforeachsensor(&Map::hide);
 	else
-		if (map->gettile(xpos, ypos).seen & TILEFLAG_SEEN)
+		if (map->gettile(xpos, ypos).isterraininlos())
 			map->display(xpos, ypos);
 }
 
 void Being::hasmoved() {
-	if (isplayer) {
+	if (isplayer)
 		visitLOSforeachsensor(&Map::reveal);
-		move(DISPLAYTOP + xpos, DISPLAYLEFT + ypos);
-		refresh();
-	}
 	else 
-		if (map->gettile(xpos, ypos).seen & TILEFLAG_SEEN)
+		if (map->gettile(xpos, ypos).isbeinginlos())
 			map->display(xpos, ypos);
 }
 
 void Being::displaystatus() {
-	UI.clearstatus();
 	for (int i = 0; i < EQSIZE; i++)
 		displayitemslot(i);
 }
 
 void Being::displayitemslot(int itemno) {
 	if (eq[itemno].gettype() != ITEM_VOID)
-		UI.displayitemslot(itemno, eq[itemno].getname(), eq[itemno].status,
-						eq[itemno].active);
+		UI.displayitemslot(itemno, eq[itemno]);
 	else
 		UI.clearitemslot(itemno);
 }
@@ -1275,8 +1405,8 @@ void Being::turntowreck() {
 	map->display(xpos, ypos);
 	// remove events related to this being from the queue
 	for (i = 0; i < QUEUE->getsize(); i++)
-		while (&BEING[QUEUE->peek(i).being] == this && i < QUEUE->getsize())
-			QUEUE->pop(i);
+		while (QUEUE->peek(i).being == getid() && i < QUEUE->getsize())
+			QUEUE->pop(i--);
 }
 
 void Being::checkexistence() {
@@ -1286,7 +1416,7 @@ void Being::checkexistence() {
 			itemsleft = true;
 	if (!itemsleft) {
 		type = BEING_VOID;
-		map->gettileaddr(xpos, ypos)->being = NULL;
+		map->setbeing(xpos, ypos, NULL);
 		map->display(xpos, ypos);
 	}
 }
@@ -1298,6 +1428,50 @@ int speedtodelay(int speed) {
 	if (delay < 10)
 		delay = 10;
 	return delay;
+}
+
+void Being::save(std::ostream & out) {
+    out << type;
+    if (type != BEING_VOID) {
+        out << ' '
+            << xpos << ' '
+            << ypos << ' '
+            << isplayer << ' '
+            << repairing << ' '
+            << std::hex << habitat << std::dec << ' '
+            << mobile << ' '
+            << thinksplayeristhere << ' ';
+        if (thinksplayeristhere)
+            out << guessx << ' '
+                << guessy << ' ';
+        out << timesincelasthit << '\n';
+        for (int i = 0; i < EQSIZE; i++)
+            eq[i].save(out);
+    }
+    else
+        out << '\n';
+}
+
+void Being::load(std::istream & in) {
+    int t;
+
+    in >> t;
+    type = (BeingType)t;
+    if (type != BEING_VOID) {
+        in >> xpos
+           >> ypos
+           >> isplayer
+           >> repairing
+           >> std::hex >> habitat >> std::dec
+           >> mobile
+           >> thinksplayeristhere;
+        if (thinksplayeristhere)
+            in >> guessx
+               >> guessy;
+        in >> timesincelasthit;
+        for (int i = 0; i < EQSIZE; i++)
+            eq[i].load(in);
+    }
 }
 
 BeingType selectbeing(int level) {

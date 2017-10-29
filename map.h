@@ -6,10 +6,9 @@ class Map;
 
 typedef void (Map::*visitor)(int, int);
 
-#include "being.h"
-#include "rng.h"
-#include "ui.h"
-extern Interface UI;
+class Being;
+
+#include <fstream>
 
 const int MAPHEIGHT = 24;
 const int MAPWIDTH = 48;
@@ -35,15 +34,15 @@ enum TerrainType {
 	TERRAIN_OFFSCREEN = 0,
 	TERRAIN_FLOOR	= 1 << 0,
 	TERRAIN_TUNNEL	= 1 << 1,
-	TERRAIN_CHASM	= 1 << 2,
-	TERRAIN_WALL	= 1 << 3,
-	TERRAIN_DARK	= 1 << 4,
+	TERRAIN_DARK	= 1 << 2,
+	TERRAIN_ROUGH	= 1 << 3,
+	TERRAIN_CHASM	= 1 << 4,
 	TERRAIN_SHALLOW	= 1 << 5,
 	TERRAIN_DEEP	= 1 << 6,
-	TERRAIN_ROUGH	= 1 << 7,
-	TERRAIN_SUB		= 1 << 8,
-	TERRAIN_METAL	= 1 << 9,
-	TERRAIN_HIGH	= 1 << 10,
+	TERRAIN_SUB		= 1 << 7,
+	TERRAIN_HIGH	= 1 << 8,
+	TERRAIN_WALL	= 1 << 9,
+	TERRAIN_METAL	= 1 << 10,
 	TERRAIN_WILDCARD = (1 << 11) - 1
 };
 
@@ -58,7 +57,7 @@ const int TP_LAND	= TERRAIN_FLOOR | TERRAIN_TUNNEL | TERRAIN_DARK;
 const int TP_TRACK	= TP_LAND | TERRAIN_ROUGH;
 const int TP_WATER	= TERRAIN_SHALLOW | TERRAIN_DEEP;
 const int TP_AIR	= TERRAIN_FLOOR | TERRAIN_CHASM | TERRAIN_SHALLOW
-				| TERRAIN_DEEP | TERRAIN_ROUGH | TERRAIN_HIGH | TERRAIN_DARK;
+				| TERRAIN_DEEP | TERRAIN_ROUGH | TERRAIN_HIGH;
 const int TP_SUB	= TP_WATER | TERRAIN_SUB;
 const int TP_ROCK	= TERRAIN_WALL | TERRAIN_HIGH;
 const int TP_DEF	= TP_LAND | TERRAIN_ROUGH | TERRAIN_SHALLOW;
@@ -79,11 +78,20 @@ public:
 	void getappearance(char & symbol, int & fore, int & back);
 	char * getname();
 	TerrainType terraintype();
+    bool oftiletype(TileType t);
 	bool canpass(int flags);
+    bool isseen();
+    bool isterraininlos();
+    bool isbeinginlos();
+    bool isvalid();
+    Being * getbeing();
 	
+    friend class Map;
+
+private:
 	TileType type;
-	Being * being;
-	char seen;
+    char seen;
+	int being;
 };
 
 int getdefaultspeed(TerrainType terrain);
@@ -116,6 +124,7 @@ private:
 class Map {
 public:
 	bool find(TileType t, int & x, int & y);
+    void settile(int x, int y, TileType t);
 	void background(TileType interior, TileType border);
 	void rect(int t, int b, int l, int r, TileType interior, TileType border);
 	void spots(TileType spot, int num);
@@ -132,7 +141,7 @@ public:
 	void displayall();
 	bool inbounds(int x, int y);
 	Tile gettile(int x, int y);
-	Tile * gettileaddr(int x, int y);
+    void setbeing(int x, int y, Being * being);
 	void visitLOS(int centerx, int centery, int radius, int terrain,
 					visitor visit);
 	void visitoctant(int centerx, int centery, int radius, int terrain,
@@ -141,13 +150,18 @@ public:
 					int targetx, int targety);
 	void reveal(int x, int y);
 	void hide(int x, int y);
+    void revealterrain(int x, int y);
 	void setvalid(int x, int y);
 	void resetvalid(int x, int y);
+
+    void save(std::ostream & out);
+    void load(std::istream & in);
 	
 private:
 	Tile tile[MAPHEIGHT][MAPWIDTH];
 };
 
 int dist(int x1, int y1, int x2, int y2);
+char terrainsymbol(TerrainType terrain);
 
 #endif

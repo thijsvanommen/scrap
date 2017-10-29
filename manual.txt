@@ -1,0 +1,102 @@
+MANUAL for Scrap, the Extended 10DRL
+
+This manual explains some things about the game mechanics that might
+not be intuitively obvious but are useful to know. You should be able
+to play the game without reading this manual, though.
+
+Systems
+
+The 'd' key allows you to view the exact details of your
+systems. Pushing 'd' while another robot's systems are being displayed
+on the right of the screen will display the details of those systems.
+
+There are five types of systems: power sources, weapons, propulsion,
+sensors, and armor. All systems of a single type behave in basically
+the same way. A robot can have up to 8 systems equipped, and they can
+be of any combination of types (with the restriction that the player
+should always have at least one power source).
+
+Power sources repair your damaged systems. If the power source itself
+is damaged down to 50% or below, it will only be able to slowly
+restore itself. When it comes back online, it will resume repairing
+whatever system you think needs repair.  You can change which system
+should be repaired by activating the power source (using one of the
+1-8 keys that corresponds to a power source). Power sources have the
+special property that when they are completely destroyed, the robot
+explodes.
+
+Weapons are used to attack opponents. The various weapons in the game
+vary by the following four properties: their strength (which measures
+the amount of damage they do), the type of damage, their range, and
+the types of squares they can shoot past (see Terrain types
+below). The type of damage determines what system is most likely to be
+hit. Normal damage has an equal chance of damaging each system, but
+special types of damage are more likely to damage systems of a
+specific type. For example, a hunter's phaser rifle is more likely to
+hit a robot's power source, and an ambusher's bazooka will be more
+likely to hit their armor.
+
+Propulsion allows robots to move. Most robots can still move even
+without the aid of a propulsion system, but only at a very slow
+rate. Propulsion systems have two properties: their speed, and the
+types of terrain they can be used on.  For example, caterpillar tracks
+(found first on tanks) have a low speed rating, but they do allow
+movement on rough terrain ('!'); without them, you'd be stuck moving
+at the very slow default speed for that type of terrain.
+
+Sensors enable robots to see their surroundings. They are defined by two
+properties: range and terrain types. You can use your sensors (1-8 key) to
+look around and get descriptions of squares you can see or have seen, and
+details about enemy robots.
+
+Finally, armor reduces the amount of damage a robot receives when
+hit. Their properties are armor strength, and (for some armors)
+special resistances. If an armor system has a special resistance
+against a certain damage type, its armor strength is doubled against
+attacks of that damage type. A cyborg's cybernetic armor has a special
+resistance against normal damage, which means that many weapons can't
+effectively damage cyborgs. The phaser rifle and bazooka mentioned
+earlier are more effective against cyborgs. Note that only the
+strongest armor on your robot applies against the attack.
+
+Some systems damage themselves when used. For these systems, it can be
+useful to switch them off while you don't need them. This is done
+using the 's' key.  A system's name will be greyed out while it is
+deactivated.
+
+You can change which system corresponds to which of the 1-8 keys with
+'r'. This does not consume game time.
+
+Terrain types
+
+Each square of the map has a terrain type, which you can tell by the
+symbol. Two tiles with different colors but the same symbol are of the
+same terrain type, so they affect your robot the same way.
+
+Weapon, propulsion and sensor systems all have a list of terrains that
+they function in. These are highlighted on the 'd'etails screen.
+
+The terrain types are as follows:
+. Floor - solid ground with open air above
+: Indoors - like floor, but most flying robots can't lift off here
+? Darkness - an indoor area that many sensors can't see through
+! Rough - like floor, but generally more difficult to move around in
+_ Chasm - can only be crossed by flying robots
+- Shallow water - many land-based vehicles can still enter this
+= Deep water - but land-based vehicles can't go here
+~ Underwater - only submarines can enter such squares
+* Obstacle - like a low wall that can be passed over by some systems
+# Wall - used by indoor locations, so you can't fly over it
+0 Metal wall - similar to wall, but for example X-rays can't pass this
+
+Save & restore
+
+You can save your current game with 'S' and restore it again at a
+later time with 'R'. You can restore each saved game only once, then
+the savefile is deleted. This is intentional: it is a feature of many
+roguelike games. It encourages you to think carefully about how you
+play, while avoiding boring situations where you play through the same
+small bit of the game many times until you finally succeed in getting
+past some obstacle.
+
+

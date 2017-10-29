@@ -1,14 +1,11 @@
 #ifndef EVENT_H
 #define EVENT_H
 
-class Event;
-class EventQueue;
-
 const int EVENTQUEUESIZE = 72;
 
 enum EventType {EVENT_ACTION, EVENT_ENERGY, EVENT_SELFENERGY};
 
-class Being;
+#include <fstream>
 
 class Event {
 public:
@@ -29,6 +26,9 @@ public:
 	void push(Event newevent);
 	Event pop(int parent = 0);
 	Event peek(int i = 0);
+
+    void save(std::ostream & out);
+    void load(std::istream & in);
 
 private:
 	int num;

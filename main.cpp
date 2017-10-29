@@ -6,12 +6,19 @@ int main() {
 
 	seedrng();
 
-	Game * game = new Game;
+    {
+        char msgbuf[128];
 
-	UI.msg("Welcome to Scrap, the Ten-Day Roguelike! Press '?' for help.");
-	game->mainloop();
+        strcpy(msgbuf, "Welcome to ");
+        strcat(msgbuf, SCRAP_VERSION);
+        strcat(msgbuf, "! Press '?' for help.");
+        UI.msg(msgbuf);
+    }
 
-	delete game;
+	do {
+        GAME.init();
+        GAME.mainloop();
+    } while (UI.confirm("Would you like to play again? (y/n)"));
 	
 	UI.close();
 

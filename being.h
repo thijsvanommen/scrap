@@ -3,17 +3,16 @@
 
 class Being;
 
+#include <fstream>
+
 #include "ui.h"
 #include "item.h"
 #include "map.h"
-#include "event.h"
-#include "rng.h"
 
 const int EQSIZE = 8;
-const int MAXNUMBEINGS = 24;
 
 enum BeingType {
-	BEING_VOID, BEING_WRECK, BEING_PLAYER, BEING_PLAYERDESCENDED,
+	BEING_VOID, BEING_WRECK, BEING_PLAYER,
 	BEING_BUGGY, BEING_PROBE, BEING_SENTRY, BEING_HUNTER, BEING_TANK,
 	BEING_AMBUSHER, BEING_SECURITY, BEING_CYBORG, BEING_JUGGERNAUT,
 	BEING_ARMADILLO, BEING_PLANT, BEING_AMPHIBIAN, BEING_DESTROYER,
@@ -38,13 +37,14 @@ enum StrategyType {
 class Being {
 public:
 	Being();
-	Being(BeingType newType);
+	Being(BeingType newType, int newid);
 
 	void createpc();
-	void place(Map * newmap, int newx, int newy, int slot = 0);
-	bool placerandom(Map * newmap, int slot = 0);
+	void place(Map * newmap, int newx, int newy);
+	bool placerandom(Map * newmap);
 	void getappearance(char & symbol, int & fore);
 	char * getname();
+    int getid();
 	
 	int act();
 	int go(int dx, int dy, bool forreal = true);
@@ -57,9 +57,11 @@ public:
 	void selectrepairing(bool autoselect);
 	void repair(int slotno, int amount);
 	void damagebyuse(int slotno);
-	void onoff();
+    int reorderitems();
+	int onoff();
 	int use(int slotno);
 	bool target(int & x, int & y, bool mustbevalid);
+    void cycletarget(int & x, int & y, int dir, bool mustbevalid);
 	
 	Command AI();
 
@@ -71,6 +73,9 @@ public:
 	void turntowreck();
 	void checkexistence();
 
+    void save(std::ostream & out);
+    void load(std::istream & in);
+
 	int xpos, ypos;
 	BeingType type;
 	bool isplayer;
@@ -81,6 +86,7 @@ public:
 	
 private:
 	Map * map;
+    int id;
 
 	// for AI:
 	int guessx, guessy; // suspected/known player coordinates

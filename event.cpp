@@ -67,3 +67,23 @@ Event EventQueue::pop(int parent) {
 Event EventQueue::peek(int i) {
 	return elt[i];
 }
+
+void EventQueue::save(std::ostream & out) {
+    out << num << ' ' << currenttime << '\n';
+    for (int i = 0; i < num; i++)
+        out << elt[i].time << ' '
+            << elt[i].type << ' '
+            << elt[i].being << '\n';
+}
+
+void EventQueue::load(std::istream & in) {
+    int t;
+
+    in >> num >> currenttime;
+    for (int i = 0; i < num; i++) {
+        in >> elt[i].time
+           >> t
+           >> elt[i].being;
+        elt[i].type = (EventType)t;
+    }
+}
