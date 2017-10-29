@@ -2,88 +2,133 @@
 
 Event::Event() {}
 
-Event::Event(int delay, EventType newtype, int newbeing):
-time(delay), type(newtype), being(newbeing) {}
+Event::Event(int delay, EventType newtype, int newbeing, int newitemno):
+time(delay), type(newtype), being(newbeing), itemno(newitemno) {}
+
+bool Event::operator==(const Event & rhs) {
+    return (type == rhs.type
+            && being == rhs.being
+            && (type != EVENT_ITEMENERGY || itemno == rhs.itemno));
+}
+
+bool Event::operator<(const Event & rhs) {
+    if (time != rhs.time)
+        return (time - rhs.time > (1 << 15));
+    else if (type != rhs.type)
+        return (type < rhs.type);
+    else if (being != rhs.being)
+        return (being < rhs.being);
+    else
+        return (itemno < rhs.itemno);
+}
 
 EventQueue::EventQueue() {
-	empty();
+    empty();
 }
 
 void EventQueue::empty() {
-	num = 0;
-	currenttime = 0;
+    num = 0;
+    currenttime = 0;
 }
 
 int EventQueue::getsize() {
-	return num;
+    return num;
 }
 
 void EventQueue::push(Event newevent) {
-	int child, parent;
+    unsigned int child, parent;
 
-	if (num > 0)
-		newevent.time += currenttime;
-	child = num++;
-	while (child > 0) {
-		parent = (child - 1) / 2;
-		if (elt[parent].time < newevent.time)
-		 	break;
-		else {
-			elt[child] = elt[parent];
-			child = parent;
-		}
-	}
-	elt[child] = newevent;
+    newevent.time += currenttime;
+    child = num++;
+    while (child > 0) {
+        parent = (child - 1) / 2;
+        if (elt[parent] < newevent)
+             break;
+        else {
+            if (child < elt.size())
+                elt[child] = elt[parent];
+            else
+                elt.push_back(elt[parent]);
+            child = parent;
+        }
+    }
+    if (child < elt.size())
+        elt[child] = newevent;
+    else
+        elt.push_back(newevent);
 }
 
-Event EventQueue::pop(int parent) {
-	Event ret = elt[parent];
-	int child;
-	num--;
-	currenttime = ret.time;
-	while (true) {
-		child = 2 * parent + 1;
-		if (child + 1 < num && elt[child+1].time < elt[child].time)
-			child++;
-		else if (child >= num)
-			break;
-		if (elt[num].time < elt[child].time)
-			break;
-		else {
-			elt[parent] = elt[child];
-			parent = child;
-		}
-	}
-	elt[parent] = elt[num];
+Event EventQueue::pop() {
+    Event ret = elt[0];
+    currenttime = ret.time;
+    pull(0);
+    return ret;
+}
 
-	if (currenttime >= 16384) { // arbitrary constant
-		for (int i = 0; i < num; i++)
-			elt[i].time -= currenttime;
-		currenttime = 0;
-	}
-	return ret;
+void EventQueue::pull(Event event) {
+    for (int i = 0; i < getsize(); i++)
+        while (elt[i] == event && i < getsize())
+            pull(i);
+}
+
+void EventQueue::pull(int parent) {
+    int child;
+
+    num--;
+    while (true) {
+        child = 2 * parent + 1;
+        if (child + 1 < num && elt[child+1] < elt[child])
+            child++;
+        else if (child >= num)
+            break;
+        if (elt[num] < elt[child])
+            break;
+        else {
+            elt[parent] = elt[child];
+            parent = child;
+        }
+    }
+    elt[parent] = elt[num];
 }
 
 Event EventQueue::peek(int i) {
-	return elt[i];
+    return elt[i];
+}
+
+void EventQueue::swapevents(Event event1, Event event2) {
+    for (int i = 0; i < getsize(); i++) {
+        if (elt[i] == event1)
+            elt[i] = event2;
+        else if (elt[i] == event2)
+            elt[i] = event1;
+    }    
 }
 
 void EventQueue::save(std::ostream & out) {
     out << num << ' ' << currenttime << '\n';
-    for (int i = 0; i < num; i++)
+    for (int i = 0; i < num; i++) {
         out << elt[i].time << ' '
             << elt[i].type << ' '
-            << elt[i].being << '\n';
+            << elt[i].being;
+        if (elt[i].type == EVENT_ITEMENERGY)
+            out << ' ' << elt[i].itemno;
+        out  << '\n';
+    }
 }
 
 void EventQueue::load(std::istream & in) {
+    Event tmp;
     int t;
 
+    elt.clear();
     in >> num >> currenttime;
     for (int i = 0; i < num; i++) {
-        in >> elt[i].time
+        in >> tmp.time
            >> t
-           >> elt[i].being;
-        elt[i].type = (EventType)t;
+           >> tmp.being;
+        tmp.type = (EventType)t;
+        if (tmp.type == EVENT_ITEMENERGY)
+            in >> tmp.itemno;
+        elt.push_back(tmp);
     }
 }

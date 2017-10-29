@@ -1,10 +1,12 @@
 #include "main.h"
 
 int main() {
-	if (!UI.init())
-		return 1;
+    bool runprogram = true;
 
-	seedrng();
+    if (!UI.init())
+        return 1;
+
+    seedrng();
 
     {
         char msgbuf[128];
@@ -15,13 +17,55 @@ int main() {
         UI.msg(msgbuf);
     }
 
-	do {
-        GAME.init();
-        GAME.mainloop();
-    } while (UI.confirm("Would you like to play again? (y/n)"));
-	
-	UI.close();
+    GAME.init();
+    GAME.state = GAMESTATE_RUNNING;
+    do {
+        switch (GAME.state) {
+        case GAMESTATE_RUNNING:
+            GAME.mainloop();
+            break;
 
-	return 0;
+        case GAMESTATE_SAVE:
+            if (GAME.savegame()) {
+                UI.msg("Game saved successfully.");
+                GAME.state = GAMESTATE_QUIT;
+            }
+            else {
+                UI.msg("An error occured while trying to write the savefile!");
+                GAME.state = GAMESTATE_RUNNING;
+            }
+            break;
+
+        case GAMESTATE_LOAD:
+            {
+                Game restoredgame;
+                if (restoredgame.loadgame()) {
+                    UI.msg("Game restored successfully.");
+                    GAME = restoredgame;
+                    restoredgame.map = NULL;
+                    GAME.startplay();
+                }
+                else
+                    UI.msg(
+                        "An error occured while trying to read the savefile!"
+                        );
+                GAME.state = GAMESTATE_RUNNING;
+            }
+            break;
+
+        default:
+            if (UI.confirm("Would you like to play again? (y/n)")) {
+                GAME.init();
+                GAME.state = GAMESTATE_RUNNING;
+            }
+            else
+                runprogram = false;
+            break;
+        }
+    } while (runprogram);
+    
+    UI.close();
+
+    return 0;
 }
 
